@@ -1,5 +1,6 @@
 from .kmapper import KeplerMapper
 from .kmapper import cluster
+from .kmapper import Cover
 from .nerve import GraphNerve
 
 try:
