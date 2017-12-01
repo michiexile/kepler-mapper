@@ -16,6 +16,10 @@ setup(name='kmapper',
         'numpy',
         'scipy'
       ],
+      extras_require = {
+          'persistence': ['dionysus'],
+          'gudhi-persistence': ['gudhi'],
+      },
       test_requires=[
         'pytest'
       ],
