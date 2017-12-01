@@ -47,7 +47,7 @@ class GraphNerve(Nerve):
             if len(set(nodes[candidate[0]]).intersection(nodes[candidate[1]])) >= self.min_intersection:
                 result[candidate[0]].append(candidate[1])
 
-        simplices = [[n] for n in nodes] + [[x] + result[x] for x in result]
+        simplices = [[n] for n in nodes] + [sorted([x,j]) for x in result for j in result[x]]
         return result, simplices
 
 class SimplicialNerve(Nerve):

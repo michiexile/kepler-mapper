@@ -1,40 +1,40 @@
 import scipy as sp
 import numpy as np
-from numpy.random.mtrand import uniform
+from numpy.random import multivariate_normal, uniform
 from sklearn import decomposition
 from sklearn import cluster
 from collections import defaultdict
 import networkx as nx
 
 from .persistence import Persistence
-
+from .nerve import GraphNerve
 
 def second_interval(barcode):
     return sorted([c - b for (a, (b, c)) in barcode])[-2]
 
-
 def simulation_test(data, N=100, invariant=second_interval):
-    persistence = Persistence(maxdim = data.shape[1], maxeps = max(data.sd(axis=0)))
-    simulationP = [invariant([(i, (b,c)) for (i, dgm) in enumerate(persistence.barcode(data)) for (b,c) in dgm])]
+    persistence = Persistence(maxdim = data.shape[1], maxeps = 4*max(data.std(axis=0)))
+    simulationP = [invariant([(i, (interval.birth,interval.death)) for (i, dgm) in enumerate(persistence.barcode(data)) for interval in dgm])]
     for simulation in [
-                (uniform(size=data.shape) + data.min(axis=0)) * data.ptp(axis=0)
+                multivariate_normal(mean=data.mean(axis=0), cov=np.cov(data.T), size=data.shape[0])
                 for _ in range(N - 1)]:
-        simulationP.append(invariant([(i, (b,c)) for (i, dgm) in enumerate(persistence.barcode(simulation)) for (b,c) in dgm]))
+        simulationP.append(invariant([(i, (interval.birth,interval.death)) for (i, dgm) in enumerate(persistence.barcode(simulation)) for interval in dgm]))
     return 1 - np.where(np.argsort(simulationP) == 0)[0] / N
 
 
-def certificate(graph, data, minsize=4, significance = 0.05, simulations=40, factor=0.5):
+def certificate(graph, data, minsize=4, significance = 0.05, simulations=40, factor=0.5, nerve=GraphNerve()):
     """
     Will certify goodness of a cover for a Mapper complex, and if the cover is not good will suggest a refinement.
     """
     simplices = graph['simplices'].copy()
     nodes = graph['nodes'].copy()
+    links = graph['links'].copy()
     splits = {n: None for n in nodes.keys()}
     queue = sorted(simplices, key=len, reverse=True)
-    persistence = Persistence(maxdim=data.shape[1], maxeps=max(data.sd(axis=0)))
+    done = []
+    persistence = Persistence(maxdim=data.shape[1], maxeps=max(data.std(axis=0)))
     while len(queue) > 0:
         simplex = queue.pop(0)
-
         if any([splits[s] is not None for s in simplex]):
             # This simplex has already been split up and handled; continue
             continue
@@ -62,20 +62,38 @@ def certificate(graph, data, minsize=4, significance = 0.05, simulations=40, fac
                 for label in splits[coverset]: splits[label] = None
 
                 # Adjust the nodes collection
+                newnodes = []
                 for i, label in enumerate(splits[coverset]):
                     nodes[label] = [nodes[coverset][j] for j in range(membership.shape[0]) if membership[j,i]]
+                    newnodes.append(label)
 
-                # Adjust the simplices
+                # Adjust the simplices and links
+                newnodes.extend([[t for t in spx if t != coverset] for spx in simplices if coverset in spx])
+                newnodes.remove([])
+
+                newlinks, newsimplices = nerve({n: nodes[n] for n in newnodes})
+
+                for spx in simplices:
+                    if coverset in spx:
+                        simplices.remove(spx)
+                simplices.extend([s for s in newsimplices if s not in simplices])
+                if coverset in links:
+                    del(links[coverset])
+                for k in links:
+                    if coverset in links[k]:
+                        links[k].remove(coverset)
+                for k in newlinks:
+                    links[k].extend([s for s in newlinks[k] if s not in links[k]])
 
                 # Adjust the queue
                 for spx in queue:
                     if coverset in spx:
                         queue.remove(spx)
-                        spx.remove(coverset)
-                        new_spxs = [spx + label
-                                    for label in splits[coverset]
-                                    if set(graph['simplices'][coverset])]
-
+                for spx in newsimplices:
+                    if spx not in queue and spx not in done:
+                        queue.append(spx)
+        else:
+            done.append(simplex)
 
 
 
